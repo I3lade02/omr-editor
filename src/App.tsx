@@ -957,321 +957,369 @@ function App() {
     alert("Podporovaný formát je PNG, JPG, JPEG nebo DOCX.");
   }
 
-  return (
-    <main className="min-h-screen bg-slate-950 text-white">
-      <div className="mx-auto max-w-7xl px-6 py-8">
-        <div className="mb-6 flex items-center justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-bold">OMR Answer Sheet Editor</h1>
+    return (
+    <main className="min-h-screen w-full overflow-hidden bg-[radial-gradient(circle_at_top_left,#1e3a8a_0,#0f172a_38%,#020617_100%)] text-white">
+      <div className="pointer-events-none fixed inset-0 opacity-40">
+        <div className="absolute left-20 top-20 h-72 w-72 rounded-full bg-blue-500/30 blur-3xl" />
+        <div className="absolute right-20 top-40 h-80 w-80 rounded-full bg-cyan-400/20 blur-3xl" />
+        <div className="absolute bottom-10 left-1/2 h-96 w-96 -translate-x-1/2 rounded-full bg-violet-500/20 blur-3xl" />
+      </div>
 
-            <p className="mt-2 text-slate-300">
-              Nahraj arch, zkalibruj bubliny a potom vyplň správné odpovědi.
-            </p>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        onChange={handleFileChange}
+        className="hidden"
+      />
 
-            {fileName && (
-              <p className="mt-2 text-sm text-slate-400">
-                Nahraný soubor:{" "}
-                <span className="font-medium text-slate-200">{fileName}</span>
+      <div className="relative z-10 flex h-screen flex-col">
+        <header className="border-b border-white/10 bg-white/[0.06] px-6 py-4 shadow-2xl backdrop-blur-2xl">
+          <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">
+                OMR editor záznamových archů
+              </h1>
+              <p className="mt-1 text-sm text-slate-300">
+                Kalibrace, vyplňování a export odpověďních archů
               </p>
-            )}
-          </div>
-
-          <button
-            type="button"
-            onClick={() => inputRef.current?.click()}
-            className="rounded-xl bg-blue-500 px-4 py-2 font-semibold text-white hover:bg-blue-400"
-          >
-            Nahrát arch
-          </button>
-
-          <input
-            ref={inputRef}
-            type="file"
-            accept="image/*,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            onChange={handleFileChange}
-            className="hidden"
-          />
-        </div>
-
-        <div className="mb-4 grid gap-3 rounded-2xl border border-slate-800 bg-slate-900 p-4 md:grid-cols-5">
-          <button
-            type="button"
-            disabled={!hasSheet}
-            onClick={() => {
-              resetCalibration();
-              setIsCalibrationMode(true);
-            }}
-            className="rounded-xl bg-amber-500 px-4 py-2 font-semibold text-black hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            Spustit kalibraci
-          </button>
-
-          <button
-            type="button"
-            disabled={!hasSheet}
-            onClick={() => setIsCalibrationMode((prev) => !prev)}
-            className="rounded-xl border border-slate-700 px-4 py-2 font-semibold text-slate-100 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {isCalibrationMode ? "Vypnout kalibraci" : "Kalibrační režim"}
-          </button>
-
-          <button
-            type="button"
-            disabled={!hasSheet || answerBubbles.length === 0}
-            onClick={exportSheet}
-            className="rounded-xl bg-emerald-500 px-4 py-2 font-semibold text-black hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {isDocxMode ? "Export DOCX" : "Export PNG"}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setAnswers({})}
-            className="rounded-xl border border-red-500/60 px-4 py-2 font-semibold text-red-300 hover:bg-red-500/10"
-          >
-            Smazat odpovědi
-          </button>
-
-          <div className="rounded-xl border border-slate-800 bg-slate-950 px-4 py-2 text-sm text-slate-300">
-            Vyplněno:{" "}
-            <span className="font-bold text-white">{filledCount}</span> / 50
-          </div>
-        </div>
-
-        {hasSheet && (
-          <div className="mb-4 rounded-xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm">
-            {isCalibrationMode && currentCalibrationStep ? (
-              <p className="text-amber-300">
-                Kalibrace: {currentCalibrationStep.label}
-              </p>
-            ) : answerBubbles.length === 0 ? (
-              <p className="text-slate-300">
-                Nejprve spusť kalibraci. Klikni postupně na 1A, 1B, 1C, 1D,
-                17A, 17B, 17C, 17D, 18A, 18B, 18C, 18D, 34A, 34B, 34C, 34D,
-                35A, 35B, 35C, 35D, 50A, 50B, 50C, 50D.
-              </p>
-            ) : (
-              <p className="text-emerald-300">
-                {isDocxMode ? (
-                  "Kalibrace hotova. Muzes klikat na odpovedi. Export vytvori DOCX vcetne vyplnenych bublin."
-                ) : (
-                  <>
-                Kalibrace hotová. Můžeš klikat na odpovědi. Export vytvoří PNG
-                včetně vyplněných bublin.
-                  </>
-                )}
-              </p>
-            )}
-          </div>
-        )}
-
-        <section className="rounded-2xl border border-slate-800 bg-slate-900 p-4 shadow-xl">
-          {!hasSheet ? (
-            <div className="flex h-[650px] items-center justify-center rounded-xl border border-dashed border-slate-700 text-slate-400">
-              Zatím není nahraný žádný arch.
             </div>
-          ) : (
-            <div className="max-h-[80vh] overflow-auto rounded-xl bg-neutral-300 p-4">
-              {isDocxMode ? (
-                <div
-                  className="relative mx-auto bg-white shadow-2xl"
-                  style={{
-                    width: imageSize.width,
-                    minHeight: imageSize.height,
+
+            <div className="flex items-center gap-3">
+              {fileName && (
+                <div className="hidden max-w-xs truncate rounded-xl border border-white/10 bg-white/10 px-4 py-2 text-sm text-slate-200 md:block">
+                  {fileName}
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() => inputRef.current?.click()}
+                className="rounded-xl border border-blue-300/30 bg-blue-500/80 px-4 py-2 font-semibold text-white shadow-lg shadow-blue-500/20 backdrop-blur transition hover:bg-blue-400"
+              >
+                Nahrát arch
+              </button>
+
+              <button
+                type="button"
+                disabled={!hasSheet || answerBubbles.length === 0}
+                onClick={exportSheet}
+                className="rounded-xl border border-emerald-300/30 bg-emerald-400/90 px-4 py-2 font-semibold text-slate-950 shadow-lg shadow-emerald-500/20 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {isDocxMode ? "Export DOCX" : "Export PNG"}
+              </button>
+            </div>
+          </div>
+        </header>
+
+        <div className="mx-auto grid min-h-0 w-full max-w-[1600px] flex-1 grid-cols-1 gap-5 px-6 py-5 lg:grid-cols-[320px_1fr]">
+          <aside className="min-h-0 space-y-4">
+            <section className="rounded-3xl border border-white/10 bg-white/[0.08] p-5 shadow-2xl backdrop-blur-2xl">
+              <div className="mb-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.25em] text-cyan-200/80">
+                  Ovládání
+                </p>
+                <h2 className="mt-1 text-lg font-semibold">Pracovní panel</h2>
+              </div>
+
+              <div className="space-y-3">
+                <button
+                  type="button"
+                  disabled={!hasSheet}
+                  onClick={() => {
+                    resetCalibration();
+                    setIsCalibrationMode(true);
                   }}
+                  className="w-full rounded-2xl bg-amber-400 px-4 py-3 font-bold text-slate-950 shadow-lg shadow-amber-500/20 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-40"
                 >
+                  Spustit kalibraci
+                </button>
+
+                <button
+                  type="button"
+                  disabled={!hasSheet}
+                  onClick={() => setIsCalibrationMode((prev) => !prev)}
+                  className="w-full rounded-2xl border border-white/15 bg-white/10 px-4 py-3 font-semibold text-slate-100 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {isCalibrationMode ? "Vypnout kalibraci" : "Kalibrační režim"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setAnswers({})}
+                  className="w-full rounded-2xl border border-red-300/25 bg-red-500/10 px-4 py-3 font-semibold text-red-200 transition hover:bg-red-500/20"
+                >
+                  Smazat odpovědi
+                </button>
+              </div>
+            </section>
+
+            <section className="rounded-3xl border border-white/10 bg-white/[0.08] p-5 shadow-2xl backdrop-blur-2xl">
+              <p className="text-xs font-semibold uppercase tracking-[0.25em] text-cyan-200/80">
+                Stav
+              </p>
+
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <p className="text-xs text-slate-400">Vyplněno</p>
+                  <p className="mt-1 text-2xl font-bold">{filledCount}/50</p>
+                </div>
+
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <p className="text-xs text-slate-400">Režim</p>
+                  <p className="mt-1 text-lg font-bold">
+                    {editorMode === "empty"
+                      ? "Prázdný"
+                      : isDocxMode
+                        ? "DOCX"
+                        : "Obrázek"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4 text-sm">
+                {hasSheet ? (
+                  isCalibrationMode && currentCalibrationStep ? (
+                    <p className="text-amber-200">
+                      {currentCalibrationStep.label}
+                    </p>
+                  ) : answerBubbles.length === 0 ? (
+                    <p className="text-slate-300">
+                      Nejprve spusť kalibraci a klikej postupně na zadané bubliny.
+                    </p>
+                  ) : (
+                    <p className="text-emerald-200">
+                      Kalibrace hotová. Můžeš vyplňovat odpovědi.
+                    </p>
+                  )
+                ) : (
+                  <p className="text-slate-300">
+                    Nahraj DOCX nebo obrázek odpovědního archu.
+                  </p>
+                )}
+              </div>
+            </section>
+          </aside>
+
+          <section className="min-h-0 rounded-3xl border border-white/10 bg-white/[0.07] p-4 shadow-2xl backdrop-blur-2xl">
+            {!hasSheet ? (
+              <div className="flex h-full min-h-[650px] items-center justify-center rounded-3xl border border-dashed border-white/20 bg-black/20 text-slate-300">
+                <div className="text-center">
+                  <p className="text-5xl">🧾</p>
+                  <p className="mt-4 text-xl font-semibold">
+                    Zatím není nahraný žádný arch
+                  </p>
+                  <p className="mt-2 text-sm text-slate-400">
+                    Začni tlačítkem „Nahrát arch“
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="h-full max-h-[calc(100vh-150px)] overflow-auto rounded-3xl border border-white/10 bg-slate-950/50 p-6">
+                {isDocxMode ? (
                   <div
-                    ref={docxPreviewRef}
-                    className="pointer-events-none text-left text-black"
+                    className="relative mx-auto overflow-hidden bg-white shadow-[0_30px_120px_rgba(0,0,0,0.75)]"
                     style={{
                       width: imageSize.width,
                       minHeight: imageSize.height,
                     }}
-                  />
-                  <div
-                    className="absolute left-0 top-0 z-20"
-                    style={{
-                      width: imageSize.width,
-                      height: imageSize.height,
-                      cursor: isCalibrationMode ? "crosshair" : "default",
-                      touchAction: isCalibrationMode ? "none" : "auto",
-                    }}
-                    onPointerDown={handleDocxOverlayPointerDown}
                   >
-                    {isCalibrationMode &&
-                      Object.entries(calibrationPoints).map(([key, point]) => (
-                        <span
-                          key={key}
-                          className="absolute block h-[10px] w-[10px] rounded-full bg-red-600"
-                          style={{
-                            left: point.x - 5,
-                            top: point.y - 5,
-                            pointerEvents: "none",
-                          }}
-                        />
-                      ))}
-
-                    {!isCalibrationMode &&
-                      answerBubbles.map((bubble) => {
-                        const bubbleKey = getBubbleKey(bubble);
-                        const isSelected =
-                          answers[bubble.question] === bubble.option;
-                        const isHovered = hoveredBubble === bubbleKey;
-                        const radius =
-                          isHovered && !isSelected
-                            ? BUBBLE_RADIUS + 1
-                            : BUBBLE_RADIUS;
-
-                        return (
-                          <button
-                            key={bubbleKey}
-                            type="button"
-                            aria-label={`${bubble.question}${bubble.option}`}
-                            className="absolute rounded-full"
-                            style={{
-                              left: bubble.x - radius,
-                              top: bubble.y - radius,
-                              width: radius * 2,
-                              height: radius * 2,
-                              background: isSelected
-                                ? "black"
-                                : isHovered
-                                  ? "rgba(0,0,0,0.28)"
-                                  : "rgba(255,255,255,0)",
-                              border:
-                                isHovered && !isSelected
-                                  ? "2px solid black"
-                                  : "1px solid transparent",
-                              cursor: "pointer",
-                              pointerEvents: "auto",
-                              touchAction: "none",
-                            }}
-                            onPointerDown={(event) => {
-                              event.stopPropagation();
-                            }}
-                            onMouseEnter={() => setHoveredBubble(bubbleKey)}
-                            onMouseLeave={() => setHoveredBubble(null)}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              selectAnswer(bubble.question, bubble.option);
-                            }}
-                          />
-                        );
-                      })}
-                  </div>
-                </div>
-              ) : (
-              <div className="mx-auto w-fit bg-white shadow-2xl">
-                <Stage
-                  ref={stageRef}
-                  width={imageSize.width}
-                  height={imageSize.height}
-                  onClick={handleStageClick}
-                >
-                  <Layer>
-                    <Rect
-                      x={0}
-                      y={0}
-                      width={imageSize.width}
-                      height={imageSize.height}
-                      fill="#ffffff"
-                      listening={false}
-                    />
-
-                    <UploadedImage
-                      src={imageSrc ?? ""}
-                      onLoaded={(size) => {
-                        if (
-                          size.width !== imageSize.width ||
-                          size.height !== imageSize.height
-                        ) {
-                          setImageSize(size);
-                        }
+                    <div
+                      ref={docxPreviewRef}
+                      className="pointer-events-none text-left text-black"
+                      style={{
+                        width: imageSize.width,
+                        minHeight: imageSize.height,
                       }}
                     />
 
-                    {isCalibrationMode &&
-                      Object.entries(calibrationPoints).map(([key, point]) => (
-                        <Circle
-                          key={key}
-                          x={point.x}
-                          y={point.y}
-                          radius={5}
-                          fill="red"
-                          listening={false}
-                        />
-                      ))}
-
-                    {!isCalibrationMode &&
-                      answerBubbles.map((bubble) => {
-                        const bubbleKey = getBubbleKey(bubble);
-                        const isSelected =
-                          answers[bubble.question] === bubble.option;
-                        const isHovered = hoveredBubble === bubbleKey;
-
-                        return (
-                          <Circle
-                            key={bubbleKey}
-                            x={bubble.x}
-                            y={bubble.y}
-                            radius={
-                              isHovered && !isSelected
-                                ? BUBBLE_RADIUS + 1
-                                : BUBBLE_RADIUS
-                            }
-                            stroke={
-                              isSelected
-                                ? undefined
-                                : isHovered
-                                  ? "black"
-                                  : "rgba(0,0,0,0)"
-                            }
-                            strokeWidth={isHovered && !isSelected ? 2 : 1}
-                            fill={
-                              isSelected
-                                ? "black"
-                                : isHovered
-                                  ? "rgba(0,0,0,0.28)"
-                                  : "rgba(255,255,255,0)"
-                            }
-                            onMouseEnter={(event) => {
-                              setHoveredBubble(bubbleKey);
-                              const container = event.target
-                                .getStage()
-                                ?.container();
-
-                              if (container) {
-                                container.style.cursor = "pointer";
-                              }
-                            }}
-                            onMouseLeave={(event) => {
-                              setHoveredBubble(null);
-                              const container = event.target
-                                .getStage()
-                                ?.container();
-
-                              if (container) {
-                                container.style.cursor = "default";
-                              }
-                            }}
-                            onClick={(event) => {
-                              event.cancelBubble = true;
-                              selectAnswer(bubble.question, bubble.option);
-                            }}
-                            onTap={(event) => {
-                              event.cancelBubble = true;
-                              selectAnswer(bubble.question, bubble.option);
+                    <div
+                      className="absolute left-0 top-0 z-20"
+                      style={{
+                        width: imageSize.width,
+                        height: imageSize.height,
+                        cursor: isCalibrationMode ? "crosshair" : "default",
+                        touchAction: isCalibrationMode ? "none" : "auto",
+                      }}
+                      onPointerDown={handleDocxOverlayPointerDown}
+                    >
+                      {isCalibrationMode &&
+                        Object.entries(calibrationPoints).map(([key, point]) => (
+                          <span
+                            key={key}
+                            className="absolute block h-[10px] w-[10px] rounded-full bg-red-600 shadow-lg shadow-red-500/70"
+                            style={{
+                              left: point.x - 5,
+                              top: point.y - 5,
+                              pointerEvents: "none",
                             }}
                           />
-                        );
-                      })}
-                  </Layer>
-                </Stage>
+                        ))}
+
+                      {!isCalibrationMode &&
+                        answerBubbles.map((bubble) => {
+                          const bubbleKey = getBubbleKey(bubble);
+                          const isSelected =
+                            answers[bubble.question] === bubble.option;
+                          const isHovered = hoveredBubble === bubbleKey;
+                          const radius =
+                            isHovered && !isSelected
+                              ? BUBBLE_RADIUS + 1
+                              : BUBBLE_RADIUS;
+
+                          return (
+                            <button
+                              key={bubbleKey}
+                              type="button"
+                              aria-label={`${bubble.question}${bubble.option}`}
+                              className="absolute rounded-full transition"
+                              style={{
+                                left: bubble.x - radius,
+                                top: bubble.y - radius,
+                                width: radius * 2,
+                                height: radius * 2,
+                                background: isSelected
+                                  ? "black"
+                                  : isHovered
+                                    ? "rgba(0,0,0,0.28)"
+                                    : "rgba(255,255,255,0)",
+                                border:
+                                  isHovered && !isSelected
+                                    ? "2px solid black"
+                                    : "1px solid transparent",
+                                cursor: "pointer",
+                                pointerEvents: "auto",
+                                touchAction: "none",
+                              }}
+                              onPointerDown={(event) => {
+                                event.stopPropagation();
+                              }}
+                              onMouseEnter={() => setHoveredBubble(bubbleKey)}
+                              onMouseLeave={() => setHoveredBubble(null)}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                selectAnswer(bubble.question, bubble.option);
+                              }}
+                            />
+                          );
+                        })}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mx-auto w-fit overflow-hidden bg-white shadow-[0_30px_120px_rgba(0,0,0,0.75)]">
+                    <Stage
+                      ref={stageRef}
+                      width={imageSize.width}
+                      height={imageSize.height}
+                      onClick={handleStageClick}
+                    >
+                      <Layer>
+                        <Rect
+                          x={0}
+                          y={0}
+                          width={imageSize.width}
+                          height={imageSize.height}
+                          fill="#ffffff"
+                          listening={false}
+                        />
+
+                        <UploadedImage
+                          src={imageSrc ?? ""}
+                          onLoaded={(size) => {
+                            if (
+                              size.width !== imageSize.width ||
+                              size.height !== imageSize.height
+                            ) {
+                              setImageSize(size);
+                            }
+                          }}
+                        />
+
+                        {isCalibrationMode &&
+                          Object.entries(calibrationPoints).map(
+                            ([key, point]) => (
+                              <Circle
+                                key={key}
+                                x={point.x}
+                                y={point.y}
+                                radius={5}
+                                fill="red"
+                                listening={false}
+                              />
+                            ),
+                          )}
+
+                        {!isCalibrationMode &&
+                          answerBubbles.map((bubble) => {
+                            const bubbleKey = getBubbleKey(bubble);
+                            const isSelected =
+                              answers[bubble.question] === bubble.option;
+                            const isHovered = hoveredBubble === bubbleKey;
+
+                            return (
+                              <Circle
+                                key={bubbleKey}
+                                x={bubble.x}
+                                y={bubble.y}
+                                radius={
+                                  isHovered && !isSelected
+                                    ? BUBBLE_RADIUS + 1
+                                    : BUBBLE_RADIUS
+                                }
+                                stroke={
+                                  isSelected
+                                    ? undefined
+                                    : isHovered
+                                      ? "black"
+                                      : "rgba(0,0,0,0)"
+                                }
+                                strokeWidth={isHovered && !isSelected ? 2 : 1}
+                                fill={
+                                  isSelected
+                                    ? "black"
+                                    : isHovered
+                                      ? "rgba(0,0,0,0.28)"
+                                      : "rgba(255,255,255,0)"
+                                }
+                                onMouseEnter={(event) => {
+                                  setHoveredBubble(bubbleKey);
+                                  const container = event.target
+                                    .getStage()
+                                    ?.container();
+
+                                  if (container) {
+                                    container.style.cursor = "pointer";
+                                  }
+                                }}
+                                onMouseLeave={(event) => {
+                                  setHoveredBubble(null);
+                                  const container = event.target
+                                    .getStage()
+                                    ?.container();
+
+                                  if (container) {
+                                    container.style.cursor = "default";
+                                  }
+                                }}
+                                onClick={(event) => {
+                                  event.cancelBubble = true;
+                                  selectAnswer(bubble.question, bubble.option);
+                                }}
+                                onTap={(event) => {
+                                  event.cancelBubble = true;
+                                  selectAnswer(bubble.question, bubble.option);
+                                }}
+                              />
+                            );
+                          })}
+                      </Layer>
+                    </Stage>
+                  </div>
+                )}
               </div>
-              )}
-            </div>
-          )}
-        </section>
+            )}
+          </section>
+        </div>
       </div>
     </main>
   );
