@@ -1,67 +1,29 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Circle, Image as KonvaImage, Layer, Rect, Stage } from "react-konva";
-import useImage from "use-image";
 import { renderAsync } from "docx-preview";
 import JSZip from "jszip";
 import type Konva from "konva";
+import { AnswersPanel } from "./components/AnswerPanel";
+import { ControlPanel } from "./components/ControlPanel";
+import { EditorCanvas } from "./components/EditorCanvas";
+import { StatusPanel } from "./components/StatusPanel";
+import {
+  A4_HEIGHT,
+  A4_WIDTH,
+  CALIBRATION_STEPS,
+  OPTIONS,
+  STORAGE_KEY,
+} from "./constants";
+import { useAnswerBubbles } from "./hooks/useAnswerBubbles";
+import { useKeyboardAnswers } from "./hooks/useKeyboardAnswers";
+import type {
+  AnswerOption,
+  Answers,
+  CalibrationPoints,
+  EditorMode,
+  ImageSize,
+  Point,
+} from "./types";
 
-type AnswerOption = "A" | "B" | "C" | "D";
-
-type Point = {
-  x: number;
-  y: number;
-};
-
-type ImageSize = {
-  width: number;
-  height: number;
-};
-
-type AnswerBubble = {
-  question: number;
-  option: AnswerOption;
-  x: number;
-  y: number;
-};
-
-type EditorMode = "empty" | "image" | "docx";
-
-type CalibrationKey =
-  | "q1A"
-  | "q1B"
-  | "q1C"
-  | "q1D"
-  | "q17A"
-  | "q17B"
-  | "q17C"
-  | "q17D"
-  | "q18A"
-  | "q18B"
-  | "q18C"
-  | "q18D"
-  | "q34A"
-  | "q34B"
-  | "q34C"
-  | "q34D"
-  | "q35A"
-  | "q35B"
-  | "q35C"
-  | "q35D"
-  | "q50A"
-  | "q50B"
-  | "q50C"
-  | "q50D";
-
-type CalibrationPoint = {
-  key: CalibrationKey;
-  label: string;
-};
-
-const OPTIONS: AnswerOption[] = ["A", "B", "C", "D"];
-
-const A4_WIDTH = 794;
-const A4_HEIGHT = 1123;
-const BUBBLE_RADIUS = 11;
 const WHITE_PIXEL_THRESHOLD = 248;
 const TRANSPARENT_PIXEL_THRESHOLD = 10;
 const TALL_PAGE_RECOMPOSE_THRESHOLD = 2.4;
@@ -92,101 +54,6 @@ const FILLED_ANSWER_GLYPHS = new Set([
   LEGACY_OMR_PRIVATE_FILLED_GLYPH,
   LEGACY_OMR_ASCII_FILLED_GLYPH,
 ]);
-
-const CALIBRATION_STEPS: CalibrationPoint[] = [
-  { key: "q1A", label: "Klikni na střed bubliny 1A" },
-  { key: "q1B", label: "Klikni na střed bubliny 1B" },
-  { key: "q1C", label: "Klikni na střed bubliny 1C" },
-  { key: "q1D", label: "Klikni na střed bubliny 1D" },
-
-  { key: "q17A", label: "Klikni na střed bubliny 17A" },
-  { key: "q17B", label: "Klikni na střed bubliny 17B" },
-  { key: "q17C", label: "Klikni na střed bubliny 17C" },
-  { key: "q17D", label: "Klikni na střed bubliny 17D" },
-
-  { key: "q18A", label: "Klikni na střed bubliny 18A" },
-  { key: "q18B", label: "Klikni na střed bubliny 18B" },
-  { key: "q18C", label: "Klikni na střed bubliny 18C" },
-  { key: "q18D", label: "Klikni na střed bubliny 18D" },
-
-  { key: "q34A", label: "Klikni na střed bubliny 34A" },
-  { key: "q34B", label: "Klikni na střed bubliny 34B" },
-  { key: "q34C", label: "Klikni na střed bubliny 34C" },
-  { key: "q34D", label: "Klikni na střed bubliny 34D" },
-
-  { key: "q35A", label: "Klikni na střed bubliny 35A" },
-  { key: "q35B", label: "Klikni na střed bubliny 35B" },
-  { key: "q35C", label: "Klikni na střed bubliny 35C" },
-  { key: "q35D", label: "Klikni na střed bubliny 35D" },
-
-  { key: "q50A", label: "Klikni na střed bubliny 50A" },
-  { key: "q50B", label: "Klikni na střed bubliny 50B" },
-  { key: "q50C", label: "Klikni na střed bubliny 50C" },
-  { key: "q50D", label: "Klikni na střed bubliny 50D" },
-];
-
-type UploadedImageProps = {
-  src: string;
-  onLoaded: (size: ImageSize) => void;
-};
-
-function UploadedImage({ src, onLoaded }: UploadedImageProps) {
-  const [image] = useImage(src);
-
-  if (!image) return null;
-
-  onLoaded({
-    width: image.width,
-    height: image.height,
-  });
-
-  return (
-    <KonvaImage
-      image={image}
-      x={0}
-      y={0}
-      width={image.width}
-      height={image.height}
-    />
-  );
-}
-
-function interpolatePoint(start: Point, end: Point, t: number): Point {
-  return {
-    x: start.x + (end.x - start.x) * t,
-    y: start.y + (end.y - start.y) * t,
-  };
-}
-
-function generateColumnBubbles(
-  startQuestion: number,
-  endQuestion: number,
-  topPoints: Record<AnswerOption, Point>,
-  bottomPoints: Record<AnswerOption, Point>,
-): AnswerBubble[] {
-  const bubbles: AnswerBubble[] = [];
-  const totalRows = endQuestion - startQuestion;
-
-  for (let q = startQuestion; q <= endQuestion; q += 1) {
-    const rowIndex = q - startQuestion;
-    const t = totalRows === 0 ? 0 : rowIndex / totalRows;
-
-    OPTIONS.forEach((option) => {
-      const top = topPoints[option];
-      const bottom = bottomPoints[option];
-      const point = interpolatePoint(top, bottom, t);
-
-      bubbles.push({
-        question: q,
-        option,
-        x: point.x,
-        y: point.y,
-      });
-    });
-  }
-
-  return bubbles;
-}
 
 type Bounds = {
   left: number;
@@ -500,6 +367,10 @@ function getOrCreateWordChild(element: Element, localName: string) {
   return child;
 }
 
+function setWordAttribute(element: Element, name: string, value: string) {
+  element.setAttributeNS(WORD_NAMESPACE, `w:${name}`, value);
+}
+
 function setRunFontFamily(run: Element, fontName: string) {
   const runProperties = getOrCreateWordChild(run, "rPr");
   const runFonts = getOrCreateWordChild(runProperties, "rFonts");
@@ -554,10 +425,6 @@ function markOmrCell(cell: Element, selectedOption: AnswerOption) {
   });
 }
 
-function setWordAttribute(element: Element, name: string, value: string) {
-  element.setAttributeNS(WORD_NAMESPACE, `w:${name}`, value);
-}
-
 function enforceA4PageSize(xmlDocument: Document) {
   getWordElements(xmlDocument, "pgSz").forEach((pageSize) => {
     setWordAttribute(pageSize, "w", A4_WIDTH_TWIPS);
@@ -568,7 +435,7 @@ function enforceA4PageSize(xmlDocument: Document) {
 
 function applyAnswersToDocxXml(
   xmlDocument: Document,
-  selectedAnswers: Record<number, AnswerOption>,
+  selectedAnswers: Answers,
 ) {
   enforceA4PageSize(xmlDocument);
 
@@ -610,103 +477,39 @@ function App() {
     width: A4_WIDTH,
     height: A4_HEIGHT,
   });
-
   const [isCalibrationMode, setIsCalibrationMode] = useState(false);
   const [calibrationIndex, setCalibrationIndex] = useState(0);
-  const [calibrationPoints, setCalibrationPoints] = useState<
-    Partial<Record<CalibrationKey, Point>>
-  >({});
-
-  const [answers, setAnswers] = useState<Record<number, AnswerOption>>({});
+  const [calibrationPoints, setCalibrationPoints] = useState<CalibrationPoints>({});
+  const [answers, setAnswers] = useState<Answers>({});
   const [hoveredBubble, setHoveredBubble] = useState<string | null>(null);
+  const [activeQuestion, setActiveQuestion] = useState(1);
 
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const stageRef = useRef<Konva.Stage>(null);
+  const stageRef = useRef<Konva.Stage | null>(null);
   const docxPreviewRef = useRef<HTMLDivElement | null>(null);
 
-  const answerBubbles = useMemo(() => {
-    const {
-      q1A,
-      q1B,
-      q1C,
-      q1D,
-      q17A,
-      q17B,
-      q17C,
-      q17D,
-      q18A,
-      q18B,
-      q18C,
-      q18D,
-      q34A,
-      q34B,
-      q34C,
-      q34D,
-      q35A,
-      q35B,
-      q35C,
-      q35D,
-      q50A,
-      q50B,
-      q50C,
-      q50D,
-    } = calibrationPoints;
-
-    if (
-      !q1A ||
-      !q1B ||
-      !q1C ||
-      !q1D ||
-      !q17A ||
-      !q17B ||
-      !q17C ||
-      !q17D ||
-      !q18A ||
-      !q18B ||
-      !q18C ||
-      !q18D ||
-      !q34A ||
-      !q34B ||
-      !q34C ||
-      !q34D ||
-      !q35A ||
-      !q35B ||
-      !q35C ||
-      !q35D ||
-      !q50A ||
-      !q50B ||
-      !q50C ||
-      !q50D
-    ) {
-      return [];
-    }
-
-    return [
-      ...generateColumnBubbles(
-        1,
-        17,
-        { A: q1A, B: q1B, C: q1C, D: q1D },
-        { A: q17A, B: q17B, C: q17C, D: q17D },
-      ),
-      ...generateColumnBubbles(
-        18,
-        34,
-        { A: q18A, B: q18B, C: q18C, D: q18D },
-        { A: q34A, B: q34B, C: q34C, D: q34D },
-      ),
-      ...generateColumnBubbles(
-        35,
-        50,
-        { A: q35A, B: q35B, C: q35C, D: q35D },
-        { A: q50A, B: q50B, C: q50C, D: q50D },
-      ),
-    ];
-  }, [calibrationPoints]);
-
+  const answerBubbles = useAnswerBubbles(calibrationPoints);
   const currentCalibrationStep = CALIBRATION_STEPS[calibrationIndex];
   const filledCount = Object.keys(answers).length;
   const hasSheet = editorMode !== "empty";
   const isDocxMode = editorMode === "docx";
+  const hasCalibration = answerBubbles.length > 0;
+  const missingQuestions = useMemo(
+    () =>
+      Array.from({ length: 50 }, (_, index) => index + 1).filter(
+        (question) => !answers[question],
+      ),
+    [answers],
+  );
+
+  useKeyboardAnswers({
+    enabled: hasSheet && hasCalibration && !isCalibrationMode,
+    activeQuestion,
+    answers,
+    setActiveQuestion,
+    setAnswers,
+    selectAnswer,
+  });
 
   useEffect(() => {
     if (!docxBuffer || !docxPreviewRef.current || !isDocxMode) {
@@ -746,7 +549,7 @@ function App() {
         });
       } catch (error) {
         console.error(error);
-        alert("DOCX se nepodarilo zobrazit.");
+        alert("DOCX se nepodařilo zobrazit.");
       }
     }
 
@@ -758,22 +561,73 @@ function App() {
     };
   }, [docxBuffer, isDocxMode]);
 
-  function getBubbleKey(bubble: AnswerBubble) {
-    return `${bubble.question}-${bubble.option}`;
-  }
-
   function selectAnswer(question: number, option: AnswerOption) {
+    setActiveQuestion(question);
     setAnswers((prev) => ({
       ...prev,
       [question]: option,
     }));
   }
 
+  function clearAnswers() {
+    setAnswers({});
+    setActiveQuestion(1);
+    setHoveredBubble(null);
+  }
+
   function resetCalibration() {
     setCalibrationPoints({});
     setCalibrationIndex(0);
-    setAnswers({});
-    setHoveredBubble(null);
+    clearAnswers();
+  }
+
+  function startCalibration() {
+    resetCalibration();
+    setIsCalibrationMode(true);
+  }
+
+  function toggleCalibration() {
+    setIsCalibrationMode((prev) => !prev);
+  }
+
+  function saveCalibration() {
+    if (!hasCalibration) {
+      alert("Nejprve dokončete kalibraci.");
+      return;
+    }
+
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(calibrationPoints));
+      alert("Kalibrace byla uložena.");
+    } catch (error) {
+      console.error(error);
+      alert("Kalibraci se nepodařilo uložit.");
+    }
+  }
+
+  function loadCalibration() {
+    try {
+      const savedCalibration = localStorage.getItem(STORAGE_KEY);
+
+      if (!savedCalibration) {
+        alert("Nebyla nalezena uložená kalibrace.");
+        return;
+      }
+
+      const parsedCalibration = JSON.parse(savedCalibration);
+
+      if (!parsedCalibration || typeof parsedCalibration !== "object") {
+        throw new Error("Saved calibration has invalid shape.");
+      }
+
+      setCalibrationPoints(parsedCalibration as CalibrationPoints);
+      setCalibrationIndex(CALIBRATION_STEPS.length);
+      setIsCalibrationMode(false);
+      clearAnswers();
+    } catch (error) {
+      console.error(error);
+      alert("Kalibraci se nepodařilo načíst.");
+    }
   }
 
   function recordCalibrationPoint(point: Point) {
@@ -814,7 +668,7 @@ function App() {
       link.click();
     } catch (error) {
       console.error(error);
-      alert("Export PNG se nepodarilo vytvorit.");
+      alert("Export PNG se nepodařilo vytvořit.");
     }
   }
 
@@ -836,11 +690,14 @@ function App() {
       );
 
       if (xmlDocument.querySelector("parsererror")) {
-        throw new Error("DOCX XML se nepodarilo nacist.");
+        throw new Error("DOCX XML se nepodařilo načíst.");
       }
 
       applyAnswersToDocxXml(xmlDocument, answers);
-      zip.file("word/document.xml", new XMLSerializer().serializeToString(xmlDocument));
+      zip.file(
+        "word/document.xml",
+        new XMLSerializer().serializeToString(xmlDocument),
+      );
 
       const blob = await zip.generateAsync({
         type: "blob",
@@ -852,7 +709,7 @@ function App() {
       downloadBlob(blob, `${baseName}-filled.docx`);
     } catch (error) {
       console.error(error);
-      alert("Export DOCX se nepodarilo vytvorit.");
+      alert("Export DOCX se nepodařilo vytvořit.");
     }
   }
 
@@ -897,16 +754,15 @@ function App() {
 
   async function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
+    event.target.value = "";
 
     if (!file) return;
 
     setFileName(file.name);
-    setAnswers({});
     resetCalibration();
 
     if (file.type.startsWith("image/")) {
       const imageUrl = URL.createObjectURL(file);
-
       const img = new Image();
 
       img.onload = () => {
@@ -916,7 +772,6 @@ function App() {
           width: img.width,
           height: img.height,
         });
-
         setImageSrc(imageUrl);
       };
 
@@ -933,19 +788,17 @@ function App() {
       try {
         const arrayBuffer = await file.arrayBuffer();
 
+        if (!arrayBuffer.byteLength) {
+          throw new Error("Empty DOCX buffer.");
+        }
+
         setEditorMode("docx");
         setImageSrc(null);
         setDocxBuffer(arrayBuffer);
-
-        if (!arrayBuffer.byteLength) {
-          throw new Error("Nepodařilo se vytvořit finální canvas.");
-        }
-
         setImageSize({
           width: A4_WIDTH,
           height: A4_HEIGHT,
         });
-
       } catch (error) {
         console.error(error);
         alert("DOCX se nepodařilo načíst.");
@@ -957,7 +810,7 @@ function App() {
     alert("Podporovaný formát je PNG, JPG, JPEG nebo DOCX.");
   }
 
-    return (
+  return (
     <main className="min-h-screen w-full overflow-hidden bg-[radial-gradient(circle_at_top_left,#1e3a8a_0,#0f172a_38%,#020617_100%)] text-white">
       <div className="pointer-events-none fixed inset-0 opacity-40">
         <div className="absolute left-20 top-20 h-72 w-72 rounded-full bg-blue-500/30 blur-3xl" />
@@ -974,14 +827,14 @@ function App() {
       />
 
       <div className="relative z-10 flex h-screen flex-col">
-        <header className="border-b border-white/10 bg-white/[0.06] px-6 py-4 shadow-2xl backdrop-blur-2xl">
-          <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-4">
+        <header className="border-b border-white/10 bg-white/6 px-6 py-4 shadow-2xl backdrop-blur-2xl">
+          <div className="mx-auto flex max-w-400 items-center justify-between gap-4">
             <div>
               <h1 className="text-2xl font-bold tracking-tight">
                 OMR editor záznamových archů
               </h1>
               <p className="mt-1 text-sm text-slate-300">
-                Kalibrace, vyplňování a export odpověďních archů
+                Kalibrace, vyplňování a export odpovědních archů
               </p>
             </div>
 
@@ -1002,7 +855,7 @@ function App() {
 
               <button
                 type="button"
-                disabled={!hasSheet || answerBubbles.length === 0}
+                disabled={!hasSheet || !hasCalibration}
                 onClick={exportSheet}
                 className="rounded-xl border border-emerald-300/30 bg-emerald-400/90 px-4 py-2 font-semibold text-slate-950 shadow-lg shadow-emerald-500/20 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-40"
               >
@@ -1012,313 +865,59 @@ function App() {
           </div>
         </header>
 
-        <div className="mx-auto grid min-h-0 w-full max-w-[1600px] flex-1 grid-cols-1 gap-5 px-6 py-5 lg:grid-cols-[320px_1fr]">
+        <div className="mx-auto grid min-h-0 w-full max-w-400 flex-1 grid-cols-1 gap-5 px-6 py-5 lg:grid-cols-[320px_1fr]">
           <aside className="min-h-0 space-y-4">
-            <section className="rounded-3xl border border-white/10 bg-white/[0.08] p-5 shadow-2xl backdrop-blur-2xl">
-              <div className="mb-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.25em] text-cyan-200/80">
-                  Ovládání
-                </p>
-                <h2 className="mt-1 text-lg font-semibold">Pracovní panel</h2>
-              </div>
+            <ControlPanel
+              hasSheet={hasSheet}
+              isCalibrationMode={isCalibrationMode}
+              startCalibration={startCalibration}
+              toggleCalibration={toggleCalibration}
+              clearAnswers={clearAnswers}
+              saveCalibration={saveCalibration}
+              loadCalibration={loadCalibration}
+            />
 
-              <div className="space-y-3">
-                <button
-                  type="button"
-                  disabled={!hasSheet}
-                  onClick={() => {
-                    resetCalibration();
-                    setIsCalibrationMode(true);
-                  }}
-                  className="w-full rounded-2xl bg-amber-400 px-4 py-3 font-bold text-slate-950 shadow-lg shadow-amber-500/20 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  Spustit kalibraci
-                </button>
+            <StatusPanel
+              filledCount={filledCount}
+              activeQuestion={activeQuestion}
+              editorMode={editorMode}
+              hasSheet={hasSheet}
+              isDocxMode={isDocxMode}
+              isCalibrationMode={isCalibrationMode}
+              currentCalibrationStep={currentCalibrationStep}
+              hasCalibration={hasCalibration}
+              missingQuestions={missingQuestions}
+            />
 
-                <button
-                  type="button"
-                  disabled={!hasSheet}
-                  onClick={() => setIsCalibrationMode((prev) => !prev)}
-                  className="w-full rounded-2xl border border-white/15 bg-white/10 px-4 py-3 font-semibold text-slate-100 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  {isCalibrationMode ? "Vypnout kalibraci" : "Kalibrační režim"}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setAnswers({})}
-                  className="w-full rounded-2xl border border-red-300/25 bg-red-500/10 px-4 py-3 font-semibold text-red-200 transition hover:bg-red-500/20"
-                >
-                  Smazat odpovědi
-                </button>
-              </div>
-            </section>
-
-            <section className="rounded-3xl border border-white/10 bg-white/[0.08] p-5 shadow-2xl backdrop-blur-2xl">
-              <p className="text-xs font-semibold uppercase tracking-[0.25em] text-cyan-200/80">
-                Stav
-              </p>
-
-              <div className="mt-4 grid grid-cols-2 gap-3">
-                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                  <p className="text-xs text-slate-400">Vyplněno</p>
-                  <p className="mt-1 text-2xl font-bold">{filledCount}/50</p>
-                </div>
-
-                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                  <p className="text-xs text-slate-400">Režim</p>
-                  <p className="mt-1 text-lg font-bold">
-                    {editorMode === "empty"
-                      ? "Prázdný"
-                      : isDocxMode
-                        ? "DOCX"
-                        : "Obrázek"}
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4 text-sm">
-                {hasSheet ? (
-                  isCalibrationMode && currentCalibrationStep ? (
-                    <p className="text-amber-200">
-                      {currentCalibrationStep.label}
-                    </p>
-                  ) : answerBubbles.length === 0 ? (
-                    <p className="text-slate-300">
-                      Nejprve spusť kalibraci a klikej postupně na zadané bubliny.
-                    </p>
-                  ) : (
-                    <p className="text-emerald-200">
-                      Kalibrace hotová. Můžeš vyplňovat odpovědi.
-                    </p>
-                  )
-                ) : (
-                  <p className="text-slate-300">
-                    Nahraj DOCX nebo obrázek odpovědního archu.
-                  </p>
-                )}
-              </div>
-            </section>
+            {hasCalibration && !isCalibrationMode ? (
+              <AnswersPanel
+                answers={answers}
+                activeQuestion={activeQuestion}
+                setActiveQuestion={setActiveQuestion}
+                selectAnswer={selectAnswer}
+              />
+            ) : null}
           </aside>
 
-          <section className="min-h-0 rounded-3xl border border-white/10 bg-white/[0.07] p-4 shadow-2xl backdrop-blur-2xl">
-            {!hasSheet ? (
-              <div className="flex h-full min-h-[650px] items-center justify-center rounded-3xl border border-dashed border-white/20 bg-black/20 text-slate-300">
-                <div className="text-center">
-                  <p className="text-5xl">🧾</p>
-                  <p className="mt-4 text-xl font-semibold">
-                    Zatím není nahraný žádný arch
-                  </p>
-                  <p className="mt-2 text-sm text-slate-400">
-                    Začni tlačítkem „Nahrát arch“
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <div className="h-full max-h-[calc(100vh-150px)] overflow-auto rounded-3xl border border-white/10 bg-slate-950/50 p-6">
-                {isDocxMode ? (
-                  <div
-                    className="relative mx-auto overflow-hidden bg-white shadow-[0_30px_120px_rgba(0,0,0,0.75)]"
-                    style={{
-                      width: imageSize.width,
-                      minHeight: imageSize.height,
-                    }}
-                  >
-                    <div
-                      ref={docxPreviewRef}
-                      className="pointer-events-none text-left text-black"
-                      style={{
-                        width: imageSize.width,
-                        minHeight: imageSize.height,
-                      }}
-                    />
-
-                    <div
-                      className="absolute left-0 top-0 z-20"
-                      style={{
-                        width: imageSize.width,
-                        height: imageSize.height,
-                        cursor: isCalibrationMode ? "crosshair" : "default",
-                        touchAction: isCalibrationMode ? "none" : "auto",
-                      }}
-                      onPointerDown={handleDocxOverlayPointerDown}
-                    >
-                      {isCalibrationMode &&
-                        Object.entries(calibrationPoints).map(([key, point]) => (
-                          <span
-                            key={key}
-                            className="absolute block h-[10px] w-[10px] rounded-full bg-red-600 shadow-lg shadow-red-500/70"
-                            style={{
-                              left: point.x - 5,
-                              top: point.y - 5,
-                              pointerEvents: "none",
-                            }}
-                          />
-                        ))}
-
-                      {!isCalibrationMode &&
-                        answerBubbles.map((bubble) => {
-                          const bubbleKey = getBubbleKey(bubble);
-                          const isSelected =
-                            answers[bubble.question] === bubble.option;
-                          const isHovered = hoveredBubble === bubbleKey;
-                          const radius =
-                            isHovered && !isSelected
-                              ? BUBBLE_RADIUS + 1
-                              : BUBBLE_RADIUS;
-
-                          return (
-                            <button
-                              key={bubbleKey}
-                              type="button"
-                              aria-label={`${bubble.question}${bubble.option}`}
-                              className="absolute rounded-full transition"
-                              style={{
-                                left: bubble.x - radius,
-                                top: bubble.y - radius,
-                                width: radius * 2,
-                                height: radius * 2,
-                                background: isSelected
-                                  ? "black"
-                                  : isHovered
-                                    ? "rgba(0,0,0,0.28)"
-                                    : "rgba(255,255,255,0)",
-                                border:
-                                  isHovered && !isSelected
-                                    ? "2px solid black"
-                                    : "1px solid transparent",
-                                cursor: "pointer",
-                                pointerEvents: "auto",
-                                touchAction: "none",
-                              }}
-                              onPointerDown={(event) => {
-                                event.stopPropagation();
-                              }}
-                              onMouseEnter={() => setHoveredBubble(bubbleKey)}
-                              onMouseLeave={() => setHoveredBubble(null)}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                selectAnswer(bubble.question, bubble.option);
-                              }}
-                            />
-                          );
-                        })}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="mx-auto w-fit overflow-hidden bg-white shadow-[0_30px_120px_rgba(0,0,0,0.75)]">
-                    <Stage
-                      ref={stageRef}
-                      width={imageSize.width}
-                      height={imageSize.height}
-                      onClick={handleStageClick}
-                    >
-                      <Layer>
-                        <Rect
-                          x={0}
-                          y={0}
-                          width={imageSize.width}
-                          height={imageSize.height}
-                          fill="#ffffff"
-                          listening={false}
-                        />
-
-                        <UploadedImage
-                          src={imageSrc ?? ""}
-                          onLoaded={(size) => {
-                            if (
-                              size.width !== imageSize.width ||
-                              size.height !== imageSize.height
-                            ) {
-                              setImageSize(size);
-                            }
-                          }}
-                        />
-
-                        {isCalibrationMode &&
-                          Object.entries(calibrationPoints).map(
-                            ([key, point]) => (
-                              <Circle
-                                key={key}
-                                x={point.x}
-                                y={point.y}
-                                radius={5}
-                                fill="red"
-                                listening={false}
-                              />
-                            ),
-                          )}
-
-                        {!isCalibrationMode &&
-                          answerBubbles.map((bubble) => {
-                            const bubbleKey = getBubbleKey(bubble);
-                            const isSelected =
-                              answers[bubble.question] === bubble.option;
-                            const isHovered = hoveredBubble === bubbleKey;
-
-                            return (
-                              <Circle
-                                key={bubbleKey}
-                                x={bubble.x}
-                                y={bubble.y}
-                                radius={
-                                  isHovered && !isSelected
-                                    ? BUBBLE_RADIUS + 1
-                                    : BUBBLE_RADIUS
-                                }
-                                stroke={
-                                  isSelected
-                                    ? undefined
-                                    : isHovered
-                                      ? "black"
-                                      : "rgba(0,0,0,0)"
-                                }
-                                strokeWidth={isHovered && !isSelected ? 2 : 1}
-                                fill={
-                                  isSelected
-                                    ? "black"
-                                    : isHovered
-                                      ? "rgba(0,0,0,0.28)"
-                                      : "rgba(255,255,255,0)"
-                                }
-                                onMouseEnter={(event) => {
-                                  setHoveredBubble(bubbleKey);
-                                  const container = event.target
-                                    .getStage()
-                                    ?.container();
-
-                                  if (container) {
-                                    container.style.cursor = "pointer";
-                                  }
-                                }}
-                                onMouseLeave={(event) => {
-                                  setHoveredBubble(null);
-                                  const container = event.target
-                                    .getStage()
-                                    ?.container();
-
-                                  if (container) {
-                                    container.style.cursor = "default";
-                                  }
-                                }}
-                                onClick={(event) => {
-                                  event.cancelBubble = true;
-                                  selectAnswer(bubble.question, bubble.option);
-                                }}
-                                onTap={(event) => {
-                                  event.cancelBubble = true;
-                                  selectAnswer(bubble.question, bubble.option);
-                                }}
-                              />
-                            );
-                          })}
-                      </Layer>
-                    </Stage>
-                  </div>
-                )}
-              </div>
-            )}
-          </section>
+          <EditorCanvas
+            hasSheet={hasSheet}
+            isDocxMode={isDocxMode}
+            activeQuestion={activeQuestion}
+            imageSrc={imageSrc}
+            imageSize={imageSize}
+            setImageSize={setImageSize}
+            stageRef={stageRef}
+            docxPreviewRef={docxPreviewRef}
+            isCalibrationMode={isCalibrationMode}
+            calibrationPoints={calibrationPoints}
+            answerBubbles={answerBubbles}
+            answers={answers}
+            hoveredBubble={hoveredBubble}
+            setHoveredBubble={setHoveredBubble}
+            handleStageClick={handleStageClick}
+            handleDocxOverlayPointerDown={handleDocxOverlayPointerDown}
+            selectAnswer={selectAnswer}
+          />
         </div>
       </div>
     </main>
