@@ -60,6 +60,7 @@ export type ImportedMoodleAnswer = {
     options: Record<AnswerOption, string>;
     status: "matched" | "unresolved";
     error?: string;
+    analysis?: string[];
 };
 
 export type MoodleAnswerImportResult = {

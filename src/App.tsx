@@ -127,7 +127,7 @@ function createWhiteCanvas(width: number, height: number) {
   const ctx = canvas.getContext("2d");
 
   if (!ctx) {
-    throw new Error("Nepodarilo se vytvorit exportni canvas.");
+    throw new Error("Nepodařilo se vytvořit exportní plátno.");
   }
 
   ctx.fillStyle = "#ffffff";
@@ -161,7 +161,7 @@ function loadImage(src: string) {
     const image = new Image();
 
     image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error("Nepodarilo se nacist exportni obrazek."));
+    image.onerror = () => reject(new Error("Nepodařilo se načíst exportní obrázek."));
     image.src = src;
   });
 }
@@ -175,7 +175,7 @@ function imageToWhiteCanvas(image: HTMLImageElement) {
 
 function composeDocxPagesIntoSingleSheet(canvases: HTMLCanvasElement[]) {
   if (canvases.length === 0) {
-    throw new Error("DOCX neobsahuje zadnou vykreslitelnou stranku.");
+    throw new Error("DOCX neobsahuje žádnou vykreslitelnou stránku.");
   }
 
   const targetWidth = canvases[0].width || A4_WIDTH;
@@ -189,7 +189,7 @@ function composeDocxPagesIntoSingleSheet(canvases: HTMLCanvasElement[]) {
   const finalCtx = finalCanvas.getContext("2d");
 
   if (!finalCtx) {
-    throw new Error("Nepodarilo se vytvorit finalni canvas.");
+    throw new Error("Nepodařilo se vytvořit finální plátno.");
   }
 
   finalCtx.fillStyle = "#ffffff";
@@ -644,7 +644,7 @@ function App() {
       const parsedCalibration = JSON.parse(savedCalibration);
 
       if (!parsedCalibration || typeof parsedCalibration !== "object") {
-        throw new Error("Saved calibration has invalid shape.");
+        throw new Error("Uložená kalibrace má neplatný formát.");
       }
 
       setCalibrationPoints(parsedCalibration as CalibrationPoints);
@@ -689,13 +689,14 @@ function App() {
       const stageCanvas = imageToWhiteCanvas(stageImage);
       const exportCanvas = prepareCanvasForExport(stageCanvas);
       const link = document.createElement("a");
+      const baseName = fileName?.replace(/\.[^.]+$/u, "") || "odpovedni-arch";
 
-      link.download = "answer-sheet-filled.png";
+      link.download = `${baseName}-vyplneny.png`;
       link.href = exportCanvas.toDataURL("image/png");
       link.click();
     } catch (error) {
       console.error(error);
-      alert("Export PNG se nepodařilo vytvořit.");
+      alert("Soubor PNG se nepodařilo vytvořit.");
     }
   }
 
@@ -731,12 +732,12 @@ function App() {
         mimeType:
           "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       });
-      const baseName = fileName?.replace(/\.docx$/i, "") || "answer-sheet";
+      const baseName = fileName?.replace(/\.docx$/i, "") || "odpovedni-arch";
 
-      downloadBlob(blob, `${baseName}-filled.docx`);
+      downloadBlob(blob, `${baseName}-vyplneny.docx`);
     } catch (error) {
       console.error(error);
-      alert("Export DOCX se nepodařilo vytvořit.");
+      alert("Soubor DOCX se nepodařilo vytvořit.");
     }
   }
 
@@ -816,7 +817,7 @@ function App() {
         const arrayBuffer = await file.arrayBuffer();
 
         if (!arrayBuffer.byteLength) {
-          throw new Error("Empty DOCX buffer.");
+          throw new Error("DOCX soubor je prázdný.");
         }
 
         setEditorMode("docx");
@@ -886,7 +887,7 @@ function App() {
                 onClick={exportSheet}
                 className="rounded-xl border border-emerald-300/30 bg-emerald-400/90 px-4 py-2 font-semibold text-slate-950 shadow-lg shadow-emerald-500/20 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-40"
               >
-                {isDocxMode ? "Export DOCX" : "Export PNG"}
+                {isDocxMode ? "Exportovat DOCX" : "Exportovat PNG"}
               </button>
             </div>
           </div>

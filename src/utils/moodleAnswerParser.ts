@@ -18,8 +18,13 @@ const STRUCTURAL_STOP_REGEX =
   /^(úloha(?:\s+\d+)?|nezodpovězeno|zodpovězeno|počet bodů|správná odpověď je\s*:)/iu;
 
 type ParsedLine = {
-  raw: string;
   normalized: string;
+};
+
+type ResolveCorrectOptionResult = {
+  correctOption: AnswerOption | null;
+  error?: string;
+  analysis?: string[];
 };
 
 function toDisplayText(value: string) {
@@ -44,6 +49,29 @@ function normalizeLooseComparisonText(value: string) {
     .trim();
 }
 
+function tokenizeForComparison(value: string) {
+  return normalizeLooseComparisonText(value)
+    .split(" ")
+    .map((token) => token.trim())
+    .filter((token) => token.length > 1);
+}
+
+function formatOptionList(options: AnswerOption[]) {
+  if (options.length === 0) {
+    return "";
+  }
+
+  if (options.length === 1) {
+    return options[0];
+  }
+
+  if (options.length === 2) {
+    return `${options[0]} a ${options[1]}`;
+  }
+
+  return `${options.slice(0, -1).join(", ")} a ${options[options.length - 1]}`;
+}
+
 function toParsedLines(rawText: string): ParsedLine[] {
   return rawText
     .replace(/\r\n?/gu, "\n")
@@ -51,7 +79,6 @@ function toParsedLines(rawText: string): ParsedLine[] {
     .map((line) => line.replace(/\u00A0/gu, " ").replace(/[ \t]+/gu, " ").trim())
     .filter(Boolean)
     .map((line) => ({
-      raw: line,
       normalized: line.normalize("NFC"),
     }));
 }
@@ -145,10 +172,135 @@ function extractQuestionNumber(lines: ParsedLine[], blockStartIndex: number) {
   return null;
 }
 
-function resolveCorrectOption(
+function buildSimilarityAnalysis(
   options: Record<AnswerOption, string>,
   correctText: string,
 ) {
+  const correctLooseText = normalizeLooseComparisonText(correctText);
+
+  if (!correctLooseText) {
+    return [
+      "Po vyčištění textu nezůstala žádná použitelná slova pro porovnání.",
+      "PDF pravděpodobně vrátilo jen interpunkci nebo neúplný úryvek odpovědi.",
+    ];
+  }
+
+  const correctTokens = new Set(tokenizeForComparison(correctText));
+  const rankedOptions = OPTION_ORDER.map((option) => {
+    const optionLooseText = normalizeLooseComparisonText(options[option]);
+    const optionTokens = Array.from(new Set(tokenizeForComparison(options[option])));
+    const sharedTokens = optionTokens.filter((token) => correctTokens.has(token));
+    const hasContainment =
+      Boolean(optionLooseText) &&
+      (optionLooseText.includes(correctLooseText) ||
+        correctLooseText.includes(optionLooseText));
+
+    return {
+      option,
+      optionLooseText,
+      sharedTokens,
+      score: sharedTokens.length + (hasContainment ? 0.5 : 0),
+    };
+  })
+    .filter((candidate) => candidate.score > 0)
+    .sort((left, right) => right.score - left.score);
+
+  const analysis: string[] = [];
+
+  if (rankedOptions.length > 0) {
+    const topCandidates = rankedOptions.slice(0, 2);
+
+    analysis.push(
+      `Nejblíže vychází možnosti ${formatOptionList(
+        topCandidates.map((candidate) => candidate.option),
+      )}.`,
+    );
+
+    topCandidates.forEach((candidate) => {
+      if (candidate.sharedTokens.length > 0) {
+        analysis.push(
+          `Možnost ${candidate.option} sdílí slova: ${candidate.sharedTokens
+            .slice(0, 5)
+            .join(", ")}.`,
+        );
+      }
+    });
+
+    const bestCandidate = topCandidates[0];
+
+    if (
+      bestCandidate.optionLooseText &&
+      correctLooseText.length < bestCandidate.optionLooseText.length * 0.55
+    ) {
+      analysis.push(
+        "Text správné odpovědi je výrazně kratší než nejbližší možnost, z PDF se nejspíš načetl jen úryvek.",
+      );
+    } else if (
+      bestCandidate.optionLooseText &&
+      correctLooseText.length > bestCandidate.optionLooseText.length * 1.6
+    ) {
+      analysis.push(
+        "Text správné odpovědi je výrazně delší než nejbližší možnost, mohl se k němu připojit i okolní text.",
+      );
+    }
+  } else {
+    analysis.push(
+      "Text správné odpovědi nesdílí s žádnou možností dost společných slov.",
+    );
+  }
+
+  analysis.push(
+    "Zkontroluj, zda PDF obsahuje textovou vrstvu a zda nejsou možnosti nebo správná odpověď rozdělené přes více řádků.",
+  );
+
+  return analysis;
+}
+
+function describeIncompleteBlock(lines: ParsedLine[], blockStartIndex: number) {
+  const directIndexes = {
+    B: findNextIndex(lines, blockStartIndex + 1, (line) => isOptionLabel(line, "B")),
+    C: findNextIndex(lines, blockStartIndex + 1, (line) => isOptionLabel(line, "C")),
+    D: findNextIndex(lines, blockStartIndex + 1, (line) => isOptionLabel(line, "D")),
+    answer: findNextIndex(lines, blockStartIndex + 1, isAnswerMarker),
+  };
+  const missingParts = [
+    directIndexes.B === -1 ? "volba B" : null,
+    directIndexes.C === -1 ? "volba C" : null,
+    directIndexes.D === -1 ? "volba D" : null,
+    directIndexes.answer === -1 ? 'řádek "správná odpověď je:"' : null,
+  ].filter(Boolean);
+  const orderIndexes = [
+    directIndexes.B,
+    directIndexes.C,
+    directIndexes.D,
+    directIndexes.answer,
+  ].filter((index) => index !== -1);
+  const outOfOrder = orderIndexes.some(
+    (index, position) => position > 0 && index < orderIndexes[position - 1],
+  );
+  const reasons: string[] = [];
+
+  if (missingParts.length > 0) {
+    reasons.push(`chybí ${missingParts.join(", ")}`);
+  }
+
+  if (outOfOrder) {
+    reasons.push("nalezené části nejsou v očekávaném pořadí A, B, C, D, správná odpověď");
+  }
+
+  if (reasons.length === 0) {
+    reasons.push("blok neodpovídá očekávané struktuře Moodlu");
+  }
+
+  return `Byl přeskočen možný blok Moodlu poblíž řádku ${
+    blockStartIndex + 1
+  }: ${reasons.join("; ")}.`;
+}
+
+function resolveCorrectOption(
+  options: Record<AnswerOption, string>,
+  correctText: string,
+): ResolveCorrectOptionResult {
   const exactMatches = OPTION_ORDER.filter(
     (option) =>
       normalizeMoodleComparisonText(options[option]) ===
@@ -162,7 +314,11 @@ function resolveCorrectOption(
   if (exactMatches.length > 1) {
     return {
       correctOption: null,
-      error: "Correct answer text matched multiple options.",
+      error: "Text správné odpovědi odpovídá více možnostem.",
+      analysis: [
+        `Stejný text mají možnosti ${formatOptionList(exactMatches)}.`,
+        "Parser proto nedokáže určit jedinou správnou volbu.",
+      ],
     };
   }
 
@@ -176,23 +332,50 @@ function resolveCorrectOption(
     return { correctOption: looseMatches[0], error: undefined };
   }
 
-  const correctLooseText = normalizeLooseComparisonText(correctText);
-  const partialMatches = OPTION_ORDER.filter((option) => {
-    const optionLooseText = normalizeLooseComparisonText(options[option]);
+  if (looseMatches.length > 1) {
+    return {
+      correctOption: null,
+      error: "Po zjednodušení textu odpovídá správná odpověď více možnostem.",
+      analysis: [
+        `Po odstranění interpunkce a uvozovek se shodují možnosti ${formatOptionList(
+          looseMatches,
+        )}.`,
+        "Rozdíl mezi možnostmi byl v PDF pravděpodobně potlačen nebo ztracen.",
+      ],
+    };
+  }
 
-    return (
-      optionLooseText.includes(correctLooseText) ||
-      correctLooseText.includes(optionLooseText)
-    );
-  });
+  const correctLooseText = normalizeLooseComparisonText(correctText);
+  const partialMatches = correctLooseText
+    ? OPTION_ORDER.filter((option) => {
+        const optionLooseText = normalizeLooseComparisonText(options[option]);
+
+        return (
+          optionLooseText.includes(correctLooseText) ||
+          correctLooseText.includes(optionLooseText)
+        );
+      })
+    : [];
 
   if (partialMatches.length === 1) {
     return { correctOption: partialMatches[0], error: undefined };
   }
 
+  if (partialMatches.length > 1) {
+    return {
+      correctOption: null,
+      error: "Text správné odpovědi je příliš obecný a sedí na více možností.",
+      analysis: [
+        `Částečně odpovídají možnosti ${formatOptionList(partialMatches)}.`,
+        "Parser našel jen kus textu, který nestačí na jednoznačné přiřazení.",
+      ],
+    };
+  }
+
   return {
     correctOption: null,
-    error: "Correct answer text could not be matched to options A-D.",
+    error: "Text správné odpovědi se nepodařilo spárovat s možnostmi A-D.",
+    analysis: buildSimilarityAnalysis(options, correctText),
   };
 }
 
@@ -200,6 +383,7 @@ function buildImportedAnswer(
   question: number,
   options: Record<AnswerOption, string>,
   correctText: string,
+  analysis: string[] = [],
 ): ImportedMoodleAnswer {
   if (!correctText) {
     return {
@@ -208,11 +392,19 @@ function buildImportedAnswer(
       correctText: "",
       options,
       status: "unresolved",
-      error: "Missing correct answer text.",
+      error: "Chybí text správné odpovědi.",
+      analysis: [
+        ...analysis,
+        "Řádek se správnou odpovědí byl prázdný nebo se z PDF nepodařilo vyčíst jeho obsah.",
+        "Zkontroluj, zda PDF není jen obrázek bez textové vrstvy.",
+      ],
     };
   }
 
-  const { correctOption, error } = resolveCorrectOption(options, correctText);
+  const { correctOption, error, analysis: resolveAnalysis } = resolveCorrectOption(
+    options,
+    correctText,
+  );
 
   return {
     question,
@@ -221,6 +413,10 @@ function buildImportedAnswer(
     options,
     status: correctOption ? "matched" : "unresolved",
     error,
+    analysis:
+      analysis.length > 0 || (resolveAnalysis?.length ?? 0) > 0
+        ? [...analysis, ...(resolveAnalysis ?? [])]
+        : undefined,
   };
 }
 
@@ -245,20 +441,28 @@ export function parseMoodleAnswerText(rawText: string): MoodleAnswerImportResult
     const answerIndex = findNextIndex(lines, dIndex + 1, isAnswerMarker);
 
     if ([bIndex, cIndex, dIndex, answerIndex].some((index) => index === -1)) {
-      errors.push(`Skipped a potential Moodle block near line ${aIndex + 1}.`);
+      errors.push(describeIncompleteBlock(lines, aIndex));
       cursor = aIndex + 1;
       continue;
     }
 
     const extractedQuestion = extractQuestionNumber(lines, aIndex);
+    const hasDuplicateQuestion =
+      extractedQuestion !== null && usedQuestions.has(extractedQuestion);
     const question =
       extractedQuestion !== null && !usedQuestions.has(extractedQuestion)
         ? extractedQuestion
         : sequentialQuestion;
 
-    if (extractedQuestion !== null && usedQuestions.has(extractedQuestion)) {
+    if (hasDuplicateQuestion) {
       errors.push(
-        `Duplicate question number ${extractedQuestion} detected. Falling back to sequential numbering for one block.`,
+        `Bylo zjištěno duplicitní číslo úlohy ${extractedQuestion}. Pro jeden blok bylo použito pořadové číslování.`,
+      );
+    }
+
+    if (extractedQuestion === null) {
+      errors.push(
+        `Blok poblíž řádku ${aIndex + 1} neměl čitelné číslo úlohy. Bylo použito pořadové číslo ${question}.`,
       );
     }
 
@@ -272,10 +476,29 @@ export function parseMoodleAnswerText(rawText: string): MoodleAnswerImportResult
       D: extractSectionText(lines, dIndex, answerIndex, "D"),
     };
     const correctText = extractCorrectText(lines, answerIndex);
-    const importedAnswer = buildImportedAnswer(question, options, correctText);
+    const answerAnalysis: string[] = [];
+
+    if (extractedQuestion === null) {
+      answerAnalysis.push(
+        `Číslo úlohy nebylo v PDF čitelné, proto byl použit pořadový index ${question}.`,
+      );
+    }
+
+    if (hasDuplicateQuestion) {
+      answerAnalysis.push(
+        `Původní číslo úlohy ${extractedQuestion} už parser použil dříve, proto tento blok dostal náhradní číslo ${question}.`,
+      );
+    }
+
+    const importedAnswer = buildImportedAnswer(
+      question,
+      options,
+      correctText,
+      answerAnalysis,
+    );
 
     if (importedAnswer.error) {
-      errors.push(`Question ${question}: ${importedAnswer.error}`);
+      errors.push(`Úloha ${question}: ${importedAnswer.error}`);
     }
 
     answers.push(importedAnswer);
@@ -283,7 +506,7 @@ export function parseMoodleAnswerText(rawText: string): MoodleAnswerImportResult
   }
 
   if (answers.length === 0) {
-    errors.push("No Moodle answer blocks were found in the extracted PDF text.");
+    errors.push("V extrahovaném textu z PDF nebyly nalezeny bloky odpovědí z Moodlu.");
   }
 
   return {
