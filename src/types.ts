@@ -52,3 +52,18 @@ export type CalibrationPoint = {
 
 export type CalibrationPoints = Partial<Record<CalibrationKey, Point>>;
 export type Answers = Record<number, AnswerOption>;
+
+export type ImportedMoodleAnswer = {
+    question: number;
+    correctOption: AnswerOption | null;
+    correctText: string;
+    options: Record<AnswerOption, string>;
+    status: "matched" | "unresolved";
+    error?: string;
+};
+
+export type MoodleAnswerImportResult = {
+    answers: ImportedMoodleAnswer[];
+    rawText: string;
+    errors: string[];
+};

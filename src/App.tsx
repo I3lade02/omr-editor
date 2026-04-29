@@ -5,6 +5,7 @@ import type Konva from "konva";
 import { AnswersPanel } from "./components/AnswerPanel";
 import { ControlPanel } from "./components/ControlPanel";
 import { EditorCanvas } from "./components/EditorCanvas";
+import { MoodleImportPanel } from "./components/MoodleImportPanel";
 import { StatusPanel } from "./components/StatusPanel";
 import {
   A4_HEIGHT,
@@ -21,6 +22,7 @@ import type {
   CalibrationPoints,
   EditorMode,
   ImageSize,
+  ImportedMoodleAnswer,
   Point,
 } from "./types";
 
@@ -511,6 +513,31 @@ function App() {
     selectAnswer,
   });
 
+  function applyImportedAnswerKey(importedAnswers: ImportedMoodleAnswer[]) {
+    const matchedAnswers = importedAnswers.filter(
+      (answer) => answer.status === "matched" && answer.correctOption,
+    );
+
+    if (matchedAnswers.length === 0) {
+      return;
+    }
+
+    const nextAnswers = matchedAnswers.reduce<Answers>((result, answer) => {
+      result[answer.question] = answer.correctOption!;
+      return result;
+    }, {});
+    const nextActiveQuestion =
+      importedAnswers.find((answer) => answer.status === "unresolved")?.question ??
+      matchedAnswers[0].question;
+
+    setAnswers((prev) => ({
+      ...prev,
+      ...nextAnswers,
+    }));
+    setActiveQuestion(nextActiveQuestion);
+    setHoveredBubble(null);
+  }
+
   useEffect(() => {
     if (!docxBuffer || !docxPreviewRef.current || !isDocxMode) {
       return;
@@ -866,7 +893,7 @@ function App() {
         </header>
 
         <div className="mx-auto grid min-h-0 w-full max-w-400 flex-1 grid-cols-1 gap-5 px-6 py-5 lg:grid-cols-[320px_1fr]">
-          <aside className="min-h-0 space-y-4">
+          <aside className="min-h-0 space-y-4 overflow-y-auto pr-1">
             <ControlPanel
               hasSheet={hasSheet}
               isCalibrationMode={isCalibrationMode}
@@ -875,6 +902,10 @@ function App() {
               clearAnswers={clearAnswers}
               saveCalibration={saveCalibration}
               loadCalibration={loadCalibration}
+            />
+
+            <MoodleImportPanel
+              onApplyImportedAnswers={applyImportedAnswerKey}
             />
 
             <StatusPanel
