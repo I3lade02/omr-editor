@@ -64,6 +64,50 @@ type Bounds = {
   bottom: number;
 };
 
+type ExportMode = "download" | "saveAs";
+
+type ExportTarget = {
+  description: string;
+  extension: string;
+  mimeType: string;
+};
+
+type SaveFilePickerOptionsLike = {
+  suggestedName?: string;
+  types?: Array<{
+    description?: string;
+    accept: Record<string, string[]>;
+  }>;
+};
+
+type FileSystemWritableFileStreamLike = {
+  write: (data: Blob) => Promise<void>;
+  close: () => Promise<void>;
+};
+
+type FileSystemFileHandleLike = {
+  createWritable: () => Promise<FileSystemWritableFileStreamLike>;
+};
+
+type WindowWithSaveFilePicker = Window & {
+  showSaveFilePicker?: (
+    options?: SaveFilePickerOptionsLike,
+  ) => Promise<FileSystemFileHandleLike>;
+};
+
+const PNG_EXPORT_TARGET: ExportTarget = {
+  description: "PNG image",
+  extension: ".png",
+  mimeType: "image/png",
+};
+
+const DOCX_EXPORT_TARGET: ExportTarget = {
+  description: "Word document",
+  extension: ".docx",
+  mimeType:
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+};
+
 function isWhitePixel(data: Uint8ClampedArray, index: number) {
   const alpha = data[index + 3];
 
@@ -466,8 +510,76 @@ function downloadBlob(blob: Blob, filename: string) {
 
   link.download = filename;
   link.href = url;
+  document.body.appendChild(link);
   link.click();
-  URL.revokeObjectURL(url);
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function canvasToBlob(canvas: HTMLCanvasElement, mimeType: string) {
+  return new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) {
+        resolve(blob);
+        return;
+      }
+
+      reject(new Error("Nepodařilo se vytvořit exportní soubor."));
+    }, mimeType);
+  });
+}
+
+async function saveBlobWithPicker(
+  blob: Blob,
+  filename: string,
+  target: ExportTarget,
+) {
+  const pickerWindow = window as WindowWithSaveFilePicker;
+
+  if (!pickerWindow.showSaveFilePicker) {
+    downloadBlob(blob, filename);
+    return true;
+  }
+
+  try {
+    const handle = await pickerWindow.showSaveFilePicker({
+      suggestedName: filename,
+      types: [
+        {
+          description: target.description,
+          accept: {
+            [target.mimeType]: [target.extension],
+          },
+        },
+      ],
+    });
+    const writable = await handle.createWritable();
+
+    await writable.write(blob);
+    await writable.close();
+
+    return true;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      return false;
+    }
+
+    throw error;
+  }
+}
+
+async function deliverExportedBlob(
+  blob: Blob,
+  filename: string,
+  target: ExportTarget,
+  mode: ExportMode,
+) {
+  if (mode === "saveAs") {
+    return saveBlobWithPicker(blob, filename, target);
+  }
+
+  downloadBlob(blob, filename);
+  return true;
 }
 
 function App() {
@@ -496,6 +608,9 @@ function App() {
   const hasSheet = editorMode !== "empty";
   const isDocxMode = editorMode === "docx";
   const hasCalibration = answerBubbles.length > 0;
+  const canChooseDownloadLocation =
+    typeof window !== "undefined" &&
+    typeof (window as WindowWithSaveFilePicker).showSaveFilePicker === "function";
   const missingQuestions = useMemo(
     () =>
       Array.from({ length: 50 }, (_, index) => index + 1).filter(
@@ -676,7 +791,7 @@ function App() {
     setCalibrationIndex(nextIndex);
   }
 
-  async function exportPng() {
+  async function exportPng(mode: ExportMode) {
     const uri = stageRef.current?.toDataURL({
       pixelRatio: 2,
       mimeType: "image/png",
@@ -688,19 +803,25 @@ function App() {
       const stageImage = await loadImage(uri);
       const stageCanvas = imageToWhiteCanvas(stageImage);
       const exportCanvas = prepareCanvasForExport(stageCanvas);
-      const link = document.createElement("a");
+      const blob = await canvasToBlob(exportCanvas, PNG_EXPORT_TARGET.mimeType);
       const baseName = fileName?.replace(/\.[^.]+$/u, "") || "odpovedni-arch";
+      const saved = await deliverExportedBlob(
+        blob,
+        `${baseName}-vyplneny.png`,
+        PNG_EXPORT_TARGET,
+        mode,
+      );
 
-      link.download = `${baseName}-vyplneny.png`;
-      link.href = exportCanvas.toDataURL("image/png");
-      link.click();
+      if (!saved) {
+        return;
+      }
     } catch (error) {
       console.error(error);
       alert("Soubor PNG se nepodařilo vytvořit.");
     }
   }
 
-  async function exportDocx() {
+  async function exportDocx(mode: ExportMode) {
     if (!docxBuffer) return;
 
     try {
@@ -733,21 +854,29 @@ function App() {
           "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       });
       const baseName = fileName?.replace(/\.docx$/i, "") || "odpovedni-arch";
+      const saved = await deliverExportedBlob(
+        blob,
+        `${baseName}-vyplneny.docx`,
+        DOCX_EXPORT_TARGET,
+        mode,
+      );
 
-      downloadBlob(blob, `${baseName}-vyplneny.docx`);
+      if (!saved) {
+        return;
+      }
     } catch (error) {
       console.error(error);
       alert("Soubor DOCX se nepodařilo vytvořit.");
     }
   }
 
-  function exportSheet() {
+  function exportSheet(mode: ExportMode = "download") {
     if (isDocxMode) {
-      void exportDocx();
+      void exportDocx(mode);
       return;
     }
 
-    void exportPng();
+    void exportPng(mode);
   }
 
   function handleStageClick(event: Konva.KonvaEventObject<MouseEvent>) {
@@ -856,7 +985,7 @@ function App() {
 
       <div className="relative z-10 flex h-screen flex-col">
         <header className="border-b border-white/10 bg-white/6 px-6 py-4 shadow-2xl backdrop-blur-2xl">
-          <div className="mx-auto flex max-w-400 items-center justify-between gap-4">
+          <div className="mx-auto flex max-w-400 flex-wrap items-center justify-between gap-4">
             <div>
               <h1 className="text-2xl font-bold tracking-tight">
                 OMR editor záznamových archů
@@ -866,7 +995,7 @@ function App() {
               </p>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center justify-end gap-3">
               {fileName && (
                 <div className="hidden max-w-xs truncate rounded-xl border border-white/10 bg-white/10 px-4 py-2 text-sm text-slate-200 md:block">
                   {fileName}
@@ -884,11 +1013,22 @@ function App() {
               <button
                 type="button"
                 disabled={!hasSheet || !hasCalibration}
-                onClick={exportSheet}
+                onClick={() => exportSheet("download")}
                 className="rounded-xl border border-emerald-300/30 bg-emerald-400/90 px-4 py-2 font-semibold text-slate-950 shadow-lg shadow-emerald-500/20 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-40"
               >
-                {isDocxMode ? "Exportovat DOCX" : "Exportovat PNG"}
+                {isDocxMode ? "Stáhnout DOCX" : "Stáhnout PNG"}
               </button>
+
+              {canChooseDownloadLocation ? (
+                <button
+                  type="button"
+                  disabled={!hasSheet || !hasCalibration}
+                  onClick={() => exportSheet("saveAs")}
+                  className="rounded-xl border border-white/15 bg-white/10 px-4 py-2 font-semibold text-slate-100 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Uložit jako…
+                </button>
+              ) : null}
             </div>
           </div>
         </header>
